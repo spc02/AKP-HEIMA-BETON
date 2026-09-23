@@ -1,0 +1,29 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyd
+
+# PyInstaller / Build outputs
+build/
+dist/
+*.exe
+
+# SQLite database auto backups & temporary files
+*backup*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Test & Scratch outputs
+scratch/
+test_output/
+*.log
+Laporan_*.pdf
+Laporan_*.xlsx
+
+# IDE & OS
+.vscode/
+.idea/
+Thumbs.db
+Desktop.ini
