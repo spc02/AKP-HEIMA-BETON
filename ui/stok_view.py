@@ -102,9 +102,9 @@ class KonfirmasiDatangDialog(ModernDialog):
         input_lay.addWidget(self.dt_datang, 1)
         layout.addWidget(input_box)
 
-        lbl_hint = QLabel("💡 Tanggal datang ini otomatis tersimpan ke Riwayat dan terinput ke Laporan Keuangan/Piutang Supplier.")
+        lbl_hint = QLabel("💡 Saat dikonfirmasi datang, kuantitas material otomatis MASUK KE STOK FISIK dan laporan keuangan diperbarui menjadi 'Sudah Datang'.")
         lbl_hint.setWordWrap(True)
-        lbl_hint.setStyleSheet("font-size: 11px; color: #64748B;")
+        lbl_hint.setStyleSheet("font-size: 11px; color: #16A34A; font-weight: 600;")
         layout.addWidget(lbl_hint)
 
         btn_box = QHBoxLayout()
@@ -115,7 +115,7 @@ class KonfirmasiDatangDialog(ModernDialog):
         btn_cancel.clicked.connect(self.reject)
         btn_box.addWidget(btn_cancel)
 
-        btn_save = PrimaryButton("Simpan Tanggal Datang")
+        btn_save = PrimaryButton("✓ Konfirmasi Sudah Datang & Masuk Stok")
         btn_save.clicked.connect(self.save_tanggal_datang)
         btn_box.addWidget(btn_save)
 
@@ -721,9 +721,9 @@ class StokView(QWidget):
             tgl_dtg = r.get("tanggal_datang")
             has_arrived = bool(tgl_dtg and str(tgl_dtg).strip() not in ("", "None", "-"))
             if has_arrived:
-                item_dtg = QTableWidgetItem(f"✓ {fmt_tgl(tgl_dtg)}")
+                item_dtg = QTableWidgetItem(f"✓ Sudah Datang\n({fmt_tgl(tgl_dtg)})")
                 item_dtg.setForeground(QColor("#059669"))
-                item_dtg.setToolTip(f"Material telah datang pada {fmt_tgl(tgl_dtg)}")
+                item_dtg.setToolTip(f"Material telah tiba pada tanggal {fmt_tgl(tgl_dtg)} dan telah masuk ke stok fisik.")
             else:
                 item_dtg = QTableWidgetItem("Belum Datang")
                 item_dtg.setForeground(QColor("#D97706"))
@@ -768,7 +768,7 @@ class StokView(QWidget):
             act_lay.setSpacing(6)
             act_lay.setAlignment(Qt.AlignCenter)
 
-            btn_datang = QPushButton("✓ Datang" if has_arrived else "📦 Datang")
+            btn_datang = QPushButton("✓ Sudah Datang" if has_arrived else "📦 Datang")
             if has_arrived:
                 btn_datang.setStyleSheet("""
                     QPushButton {
@@ -779,7 +779,7 @@ class StokView(QWidget):
                         padding: 4px 8px;
                         font-size: 11px;
                         font-weight: 700;
-                        min-width: 60px;
+                        min-width: 90px;
                     }
                     QPushButton:hover {
                         background-color: #DCFCE7;
@@ -787,7 +787,7 @@ class StokView(QWidget):
                         border-color: #4ADE80;
                     }
                 """)
-                btn_datang.setToolTip(f"Sudah datang ({fmt_tgl(tgl_dtg)}). Klik untuk ubah tanggal kedatangan.")
+                btn_datang.setToolTip(f"Sudah datang ({fmt_tgl(tgl_dtg)}). Klik jika ingin mengubah tanggal kedatangan.")
             else:
                 btn_datang.setStyleSheet("""
                     QPushButton {
@@ -798,7 +798,7 @@ class StokView(QWidget):
                         padding: 4px 10px;
                         font-size: 11px;
                         font-weight: 700;
-                        min-width: 60px;
+                        min-width: 75px;
                     }
                     QPushButton:hover {
                         background-color: #D1FAE5;
@@ -806,7 +806,7 @@ class StokView(QWidget):
                         border-color: #059669;
                     }
                 """)
-                btn_datang.setToolTip("Klik untuk mencatat tanggal kedatangan material ini")
+                btn_datang.setToolTip("Klik jika material ini sudah tiba di plant (akan langsung menambah stok & update laporan)")
 
             btn_datang.clicked.connect(lambda _, row_data=r: self.buka_dialog_konfirmasi_datang(row_data))
             act_lay.addWidget(btn_datang)
@@ -823,8 +823,8 @@ class StokView(QWidget):
         if dlg.exec() == QDialog.Accepted:
             tgl_str = dlg.dt_datang.date().toString("yyyy-MM-dd")
             QMessageBox.information(
-                self, "Berhasil", 
-                f"Tanggal datang material ({fmt_tgl(tgl_str)}) berhasil dicatat!\nLaporan otomatis diperbarui."
+                self, "Material Sudah Datang", 
+                f"Status material berhasil diubah menjadi SUDAH DATANG ({fmt_tgl(tgl_str)})!\nMaterial resmi masuk ke stok fisik dan laporan telah diperbarui."
             )
             self.refresh_all()
             self.data_changed.emit()

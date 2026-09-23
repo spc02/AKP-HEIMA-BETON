@@ -366,7 +366,7 @@ class DetailMaterialDODialog(ModernDialog):
         # Baris 2: Tanggal Datang & Jatuh Tempo
         tgl_dtg_raw = o.get("tanggal_datang")
         if tgl_dtg_raw and str(tgl_dtg_raw).strip() not in ("-", "None", ""):
-            tgl_dtg = str(tgl_dtg_raw)
+            tgl_dtg = f"Sudah Datang ({fmt_tgl(tgl_dtg_raw)})"
         else:
             tgl_dtg = "Belum Datang"
         jt_str = str(o.get("jatuh_tempo") or "-")
@@ -788,87 +788,46 @@ class KasKantorDialog(ModernDialog):
         self.cb_kat.setView(QListView())
         self.cb_kat.setEditable(True)
         self.cb_kat.addItems([
-            "BBM / Solar Operasional",
-            "Servis & Maintenance",
             "Konsumsi & Dapur",
             "ATK & Perlengkapan Kantor",
             "Listrik, Air & Komunikasi",
-            "Sparepart & Oli Mesin",
-            "Retribusi & Parkir",
-            "Lain-lain"
+            "Retribusi, Parkir & Keamanan",
+            "Kebersihan & Perlengkapan Plant",
+            "Lain-lain (Operasional Kantor)"
         ])
         grid.addWidget(self.cb_kat, 1, 1)
 
-        grid.addWidget(QLabel("Alokasi Kendaraan:"), 2, 0)
-        self.cb_kendaraan = QComboBox()
-        self.cb_kendaraan.setView(QListView())
-        self.cb_kendaraan.addItem("-- Bukan Kendaraan (Umum / Kantor) --", None)
-        try:
-            fleet = database.get_all_kendaraan()
-            for k in fleet:
-                lbl = f"{k['no_plat']} - {k['nama_kendaraan']}" if k.get('nama_kendaraan') else k['no_plat']
-                self.cb_kendaraan.addItem(lbl, k['id'])
-        except Exception:
-            pass
-        self.cb_kendaraan.currentIndexChanged.connect(self.on_kendaraan_changed)
-        grid.addWidget(self.cb_kendaraan, 2, 1)
-
-        grid.addWidget(QLabel("Surat Jalan Cor (BBM):"), 3, 0)
-        self.cb_pengiriman = QComboBox()
-        self.cb_pengiriman.setView(QListView())
-        self.cb_pengiriman.addItem("-- Bukan Dari Pengiriman Tertentu --", None)
-        grid.addWidget(self.cb_pengiriman, 3, 1)
-
-        grid.addWidget(QLabel("No. Nota / Kuitansi:"), 4, 0)
+        grid.addWidget(QLabel("No. Nota / Kuitansi:"), 2, 0)
         self.txt_nota = QLineEdit()
-        self.txt_nota.setPlaceholderText("Contoh: NOTA-092 / SPBU-881")
-        grid.addWidget(self.txt_nota, 4, 1)
+        self.txt_nota.setPlaceholderText("Contoh: NOTA-092 / Toko-881")
+        grid.addWidget(self.txt_nota, 2, 1)
 
-        grid.addWidget(QLabel("Nama Toko / Penerima:"), 5, 0)
+        grid.addWidget(QLabel("Nama Toko / Penerima:"), 3, 0)
         self.txt_toko = QLineEdit()
-        self.txt_toko.setPlaceholderText("Contoh: SPBU Secang / Toko Bangunan Berkah")
-        grid.addWidget(self.txt_toko, 5, 1)
+        self.txt_toko.setPlaceholderText("Contoh: Toko Bangunan Berkah / PLN / PDAM")
+        grid.addWidget(self.txt_toko, 3, 1)
 
-        grid.addWidget(QLabel("Nominal Pengeluaran (Rp):*"), 6, 0)
+        grid.addWidget(QLabel("Nominal Pengeluaran (Rp):*"), 4, 0)
         self.spin_nominal = QDoubleSpinBox()
         self.spin_nominal.setRange(100, 10000000000.0)
         self.spin_nominal.setDecimals(0)
         self.spin_nominal.setSingleStep(50000)
         self.spin_nominal.setValue(100000)
-        grid.addWidget(self.spin_nominal, 6, 1)
+        grid.addWidget(self.spin_nominal, 4, 1)
 
-        grid.addWidget(QLabel("Rincian / Keterangan:*"), 7, 0)
+        grid.addWidget(QLabel("Rincian / Keterangan:*"), 5, 0)
         self.txt_ket = QTextEdit()
-        self.txt_ket.setPlaceholderText("Uraian pengeluaran untuk keperluan apa")
+        self.txt_ket.setPlaceholderText("Uraian pengeluaran operasional kantor...")
         self.txt_ket.setMaximumHeight(65)
-        grid.addWidget(self.txt_ket, 7, 1)
+        grid.addWidget(self.txt_ket, 5, 1)
 
         # Info otomatis potong kas
-        lbl_info = QLabel("Catatan: Pengeluaran ini akan langsung mengurangi Saldo Kas Plant dan menandai Status BBM Pengiriman 'Sudah Diisi'.")
+        lbl_info = QLabel("Catatan: Pengeluaran ini memotong Saldo Kas Plant. Untuk operasional kendaraan, BBM cor & servis, gunakan menu khusus Operasional Kendaraan.")
         lbl_info.setStyleSheet(f"color: {styles.COLOR_TEXT_MUTED}; font-size: 11px; font-style: italic;")
-        grid.addWidget(lbl_info, 8, 0, 1, 2)
+        grid.addWidget(lbl_info, 6, 0, 1, 2)
 
         self.content_layout.addLayout(grid)
         self.btn_save.clicked.connect(self.save)
-
-    def on_kendaraan_changed(self):
-        k_id = self.cb_kendaraan.currentData()
-        self.cb_pengiriman.blockSignals(True)
-        self.cb_pengiriman.clear()
-        self.cb_pengiriman.addItem("-- Bukan Dari Pengiriman Tertentu --", None)
-        if k_id:
-            try:
-                pending = database.get_pengiriman_pending_bbm(kendaraan_id=k_id)
-                for p in pending:
-                    sj = p.get("no_surat_jalan") or f"SJ #{p['id']}"
-                    tgl = str(p.get("tanggal") or "")[:10]
-                    vol = styles.format_number(p.get("volume_m3") or 0, 2)
-                    pr = p.get("proyek_nama") or "-"
-                    lbl = f"⚠️ {sj} | {tgl} | {vol} m³ | {pr}"
-                    self.cb_pengiriman.addItem(lbl, p["id"])
-            except Exception:
-                pass
-        self.cb_pengiriman.blockSignals(False)
 
     def save(self):
         tgl = self.dt_tgl.date().toString("yyyy-MM-dd")
@@ -885,11 +844,8 @@ class KasKantorDialog(ModernDialog):
             QMessageBox.warning(self, "Peringatan", "Rincian keterangan pengeluaran wajib diisi!")
             return
 
-        k_id = self.cb_kendaraan.currentData()
-        p_id = self.cb_pengiriman.currentData()
-
         try:
-            database.catat_kas_kantor(tgl, nominal, kat, nota, toko, ket, "", kendaraan_id=k_id, pengiriman_id=p_id)
+            database.catat_kas_kantor(tgl, nominal, kat, nota, toko, ket, "", kendaraan_id=None, pengiriman_id=None)
             self.accept()
         except Exception as e:
             QMessageBox.critical(self, "Gagal", f"Gagal mencatat kas kantor: {str(e)}")
@@ -1927,7 +1883,7 @@ class KeuanganView(QWidget):
         kpi_lay = QHBoxLayout()
         kpi_lay.setSpacing(10)
         self.card_kantor_total = StatCard("Total Pengeluaran Kas Kantor", "Rp 0", "Seluruh Pengeluaran Harian", "#D97706")
-        self.card_kantor_bulan = StatCard("Pengeluaran Bulan Berjalan", "Rp 0", "BBM, Servis, ATK Bulan Ini", "#EA580C")
+        self.card_kantor_bulan = StatCard("Pengeluaran Bulan Berjalan", "Rp 0", "Konsumsi, ATK, Listrik Bulan Ini", "#EA580C")
         kpi_lay.addWidget(self.card_kantor_total)
         kpi_lay.addWidget(self.card_kantor_bulan)
         layout.addLayout(kpi_lay)

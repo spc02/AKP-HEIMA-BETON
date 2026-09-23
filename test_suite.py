@@ -423,6 +423,21 @@ class AKPBetonTestSuite(unittest.TestCase):
         # Bersihkan material uji
         database.delete_material(mat_id)
 
+    def test_16_kas_kantor_without_vehicle_fields(self):
+        """Memverifikasi form kas kantor tidak memiliki input kendaraan & BBM karena sudah ada menu khusus"""
+        from ui.keuangan_view import KasKantorDialog
+        dlg = KasKantorDialog()
+        self.assertFalse(hasattr(dlg, "cb_kendaraan"))
+        self.assertFalse(hasattr(dlg, "cb_pengiriman"))
+        
+        # Pastikan tidak ada kategori BBM atau kendaraan
+        items = [dlg.cb_kat.itemText(i) for i in range(dlg.cb_kat.count())]
+        self.assertNotIn("BBM / Solar Operasional", items)
+        self.assertNotIn("Servis & Maintenance", items)
+        self.assertNotIn("Sparepart & Oli Mesin", items)
+        self.assertIn("ATK & Perlengkapan Kantor", items)
+        self.assertIn("Konsumsi & Dapur", items)
+
 if __name__ == "__main__":
     unittest.main()
 

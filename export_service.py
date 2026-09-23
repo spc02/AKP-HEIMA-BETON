@@ -355,7 +355,7 @@ def export_keuangan_excel(filepath: str, start_date: Optional[str] = None, end_d
             tot_sisa += t_sisa
             stat_str = "LUNAS" if t_sisa <= 0 else ("CICILAN" if t_byr > 0 else "BELUM BAYAR")
             tgl_dtg_val = row.get("tanggal_datang")
-            tgl_dtg_str = fmt_tgl(tgl_dtg_val) if tgl_dtg_val and str(tgl_dtg_val).strip() not in ("-", "None", "") else "Belum Datang"
+            tgl_dtg_str = f"Sudah Datang ({fmt_tgl(tgl_dtg_val)})" if tgl_dtg_val and str(tgl_dtg_val).strip() not in ("-", "None", "") else "Belum Datang"
 
             vals = [
                 idx, row.get("no_order") or "-", row.get("supplier") or "-", fmt_tgl(row.get("tanggal_order")), tgl_dtg_str,
