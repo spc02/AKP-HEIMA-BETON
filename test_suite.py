@@ -70,6 +70,12 @@ class AKPBetonTestSuite(unittest.TestCase):
             harga_satuan=1150.0,
             keterangan="DO Test Semen Masuk"
         )
+        # Belum diklik datang: material belum masuk stok
+        self.assertEqual(database.get_material_by_id(semen_id)["stok_saat_ini"], init_semen)
+
+        # Klik Datang: material resmi masuk stok
+        ok_dtg, _ = database.set_stok_masuk_tanggal_datang(stok_id, "2026-08-01")
+        self.assertTrue(ok_dtg)
         after_in = database.get_material_by_id(semen_id)["stok_saat_ini"]
         self.assertEqual(after_in, init_semen + 10000.0)
 
@@ -367,6 +373,55 @@ class AKPBetonTestSuite(unittest.TestCase):
         
         # Bersihkan data uji
         database.hapus_kendaraan(k["id"])
+
+    def test_15_stok_masuk_arrival_flow(self):
+        """Memverifikasi order material belum masuk stok sebelum diklik Datang, dan masuk setelah diklik Datang"""
+        # 1. Tambah material uji
+        mat_id = database.save_material(kode="MAT-TST", nama="Batu Uji", satuan="kg", stok_minimum=100.0, harga_beli_terbaru=500.0, stok_awal=0.0)
+        init_stok = database.get_material_by_id(mat_id)["stok_saat_ini"]
+        self.assertEqual(init_stok, 0.0)
+
+        # 2. Input stok masuk tanpa tanggal datang (status order)
+        stok_id = database.tambah_stok_masuk(
+            material_id=mat_id,
+            tanggal="2026-09-23",
+            jumlah=500.0,
+            no_plat="AB 1111 ZZ",
+            supplier="Supplier Uji",
+            harga_satuan=500.0,
+            keterangan="Order uji belum datang",
+            tanggal_datang=None
+        )
+        
+        # Stok masih harus 0 karena belum diklik Datang
+        stok_after_order = database.get_material_by_id(mat_id)["stok_saat_ini"]
+        self.assertEqual(stok_after_order, 0.0)
+
+        # Total masuk di rekap kartu stok juga belum menghitung yang belum datang
+        rekap = [r for r in database.get_rekap_kartu_stok() if r["id"] == mat_id][0]
+        self.assertEqual(rekap["total_masuk"], 0.0)
+
+        # 3. Klik Datang
+        ok, msg = database.set_stok_masuk_tanggal_datang(stok_id, "2026-09-23")
+        self.assertTrue(ok)
+
+        # Sekarang stok harus bertambah 500.0
+        stok_after_datang = database.get_material_by_id(mat_id)["stok_saat_ini"]
+        self.assertEqual(stok_after_datang, 500.0)
+
+        rekap2 = [r for r in database.get_rekap_kartu_stok() if r["id"] == mat_id][0]
+        self.assertEqual(rekap2["total_masuk"], 500.0)
+
+        # Klik datang lagi tidak boleh dobel tambah stok
+        database.set_stok_masuk_tanggal_datang(stok_id, "2026-09-23")
+        self.assertEqual(database.get_material_by_id(mat_id)["stok_saat_ini"], 500.0)
+
+        # 4. Hapus stok masuk yang sudah datang -> stok berkurang kembali
+        database.hapus_stok_masuk(stok_id)
+        self.assertEqual(database.get_material_by_id(mat_id)["stok_saat_ini"], 0.0)
+
+        # Bersihkan material uji
+        database.delete_material(mat_id)
 
 if __name__ == "__main__":
     unittest.main()

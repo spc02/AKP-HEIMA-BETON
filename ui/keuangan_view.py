@@ -364,7 +364,11 @@ class DetailMaterialDODialog(ModernDialog):
         grid.addWidget(QLabel(f"<b>{styles.format_number(o.get('jumlah_ton') or 0, 2)} {satuan}</b>"), 1, 3)
 
         # Baris 2: Tanggal Datang & Jatuh Tempo
-        tgl_dtg = str(o.get("tanggal_datang") or o.get("tanggal_order") or "-")
+        tgl_dtg_raw = o.get("tanggal_datang")
+        if tgl_dtg_raw and str(tgl_dtg_raw).strip() not in ("-", "None", ""):
+            tgl_dtg = str(tgl_dtg_raw)
+        else:
+            tgl_dtg = "Belum Datang"
         jt_str = str(o.get("jatuh_tempo") or "-")
         grid.addWidget(QLabel("Tanggal Datang / DO:"), 2, 0)
         grid.addWidget(QLabel(f"<b>{tgl_dtg}</b>"), 2, 1)

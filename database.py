@@ -1722,32 +1722,42 @@ def tambah_stok_masuk(material_id: int, tanggal: str, jumlah: float,
             cursor.execute("UPDATE pembayaran_semen SET stok_masuk_id = ? WHERE id = ?", (stok_id, pembayaran_semen_id))
 
         # Update stok saat ini & harga terbaru material (GLOBAL)
-        if harga_satuan > 0:
-            cursor.execute("""
-            UPDATE material 
-            SET stok_saat_ini = stok_saat_ini + ?, harga_beli_terbaru = ? 
-            WHERE id = ?
-            """, (jumlah, harga_satuan, material_id))
-            
-            # Catat histori perubahan harga
-            cursor.execute("""
-            INSERT INTO material_harga_histori (material_id, tanggal, harga_beli, keterangan)
-            VALUES (?, ?, ?, ?)
-            """, (material_id, tanggal, harga_satuan, f"Penerimaan Stok ({supplier.strip() or 'Supplier'})"))
-        else:
-            cursor.execute("UPDATE material SET stok_saat_ini = stok_saat_ini + ? WHERE id = ?", (jumlah, material_id))
+        # HANYA jika material sudah berstatus datang (clean_tgl_dtg is not None)
+        if clean_tgl_dtg:
+            if harga_satuan > 0:
+                cursor.execute("""
+                UPDATE material 
+                SET stok_saat_ini = stok_saat_ini + ?, harga_beli_terbaru = ? 
+                WHERE id = ?
+                """, (jumlah, harga_satuan, material_id))
+                
+                # Catat histori perubahan harga
+                cursor.execute("""
+                INSERT INTO material_harga_histori (material_id, tanggal, harga_beli, keterangan)
+                VALUES (?, ?, ?, ?)
+                """, (material_id, clean_tgl_dtg, harga_satuan, f"Penerimaan Stok ({supplier.strip() or 'Supplier'})"))
+            else:
+                cursor.execute("UPDATE material SET stok_saat_ini = stok_saat_ini + ? WHERE id = ?", (jumlah, material_id))
 
-        # === INDIVIDUAL STOCK: Tambah ke SEMUA user aktif (stok masuk = shared) ===
-        _sync_shared_stok_masuk_to_all_users(cursor, material_id, jumlah, stok_id, tanggal)
+            # === INDIVIDUAL STOCK: Tambah ke SEMUA user aktif (stok masuk = shared) ===
+            _sync_shared_stok_masuk_to_all_users(cursor, material_id, jumlah, stok_id, clean_tgl_dtg)
+        else:
+            # Belum datang: hanya catat harga beli terbaru jika diinput
+            if harga_satuan > 0:
+                cursor.execute("""
+                UPDATE material 
+                SET harga_beli_terbaru = ? 
+                WHERE id = ?
+                """, (harga_satuan, material_id))
 
         conn.commit()
         return stok_id
 
 def hapus_stok_masuk(stok_id: int) -> Tuple[bool, str]:
-    """Menghapus transaksi stok masuk, mengurangi stok kembali, dan menghapus hutang semen terkait"""
+    """Menghapus transaksi stok masuk, mengurangi stok kembali jika sudah datang, dan menghapus hutang semen terkait"""
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT material_id, jumlah, pembayaran_semen_id FROM stok_masuk WHERE id = ?", (stok_id,))
+        cursor.execute("SELECT material_id, jumlah, pembayaran_semen_id, tanggal_datang FROM stok_masuk WHERE id = ?", (stok_id,))
         row = cursor.fetchone()
         if not row:
             return False, "Data stok masuk tidak ditemukan."
@@ -1755,6 +1765,8 @@ def hapus_stok_masuk(stok_id: int) -> Tuple[bool, str]:
         mat_id = row["material_id"]
         qty = row["jumlah"]
         semen_id = row["pembayaran_semen_id"]
+        prev_dtg = row["tanggal_datang"]
+        was_arrived = bool(prev_dtg and str(prev_dtg).strip() not in ("", "None", "-"))
         
         if semen_id:
             # Hapus cicilan semen dan order semen
@@ -1762,10 +1774,12 @@ def hapus_stok_masuk(stok_id: int) -> Tuple[bool, str]:
             cursor.execute("DELETE FROM pembayaran_semen WHERE id = ?", (semen_id,))
             
         cursor.execute("DELETE FROM stok_masuk WHERE id = ?", (stok_id,))
-        cursor.execute("UPDATE material SET stok_saat_ini = stok_saat_ini - ? WHERE id = ?", (qty, mat_id))
 
-        # === INDIVIDUAL STOCK: Rollback dari SEMUA user aktif ===
-        _rollback_shared_stok_masuk_from_all_users(cursor, mat_id, qty, stok_id)
+        # HANYA kurangi stok jika material sebelumnya berstatus SUDAH DATANG
+        if was_arrived:
+            cursor.execute("UPDATE material SET stok_saat_ini = stok_saat_ini - ? WHERE id = ?", (qty, mat_id))
+            # === INDIVIDUAL STOCK: Rollback dari SEMUA user aktif ===
+            _rollback_shared_stok_masuk_from_all_users(cursor, mat_id, qty, stok_id)
         
         # Hitung ulang kas jika ada cicilan terhapus
         recalculate_master_kas_balances(cursor)
@@ -1775,6 +1789,7 @@ def hapus_stok_masuk(stok_id: int) -> Tuple[bool, str]:
 def set_stok_masuk_tanggal_datang(stok_masuk_id: int, tanggal_datang: str) -> Tuple[bool, str]:
     """
     Update tanggal datang aktual untuk catatan stok masuk dan pembayaran semen/material terkait.
+    Jika sebelumnya material belum tiba (status belum datang), aksi ini otomatis memasukkan barang ke stok.
     """
     try:
         clean_dtg = str(tanggal_datang or "").strip()
@@ -1783,6 +1798,18 @@ def set_stok_masuk_tanggal_datang(stok_masuk_id: int, tanggal_datang: str) -> Tu
             
         with get_connection() as conn:
             cursor = conn.cursor()
+            cursor.execute("SELECT material_id, jumlah, harga_satuan, supplier, tanggal_datang FROM stok_masuk WHERE id = ?", (stok_masuk_id,))
+            row = cursor.fetchone()
+            if not row:
+                return False, "Data stok masuk tidak ditemukan."
+
+            mat_id = row["material_id"]
+            qty = float(row["jumlah"] or 0)
+            hrg_sat = float(row["harga_satuan"] or 0)
+            supp = str(row["supplier"] or "Supplier")
+            prev_dtg = row["tanggal_datang"]
+            was_arrived = bool(prev_dtg and str(prev_dtg).strip() not in ("", "None", "-"))
+
             # 1. Update stok_masuk
             cursor.execute("UPDATE stok_masuk SET tanggal_datang = ? WHERE id = ?", (clean_dtg, stok_masuk_id))
             
@@ -1792,9 +1819,28 @@ def set_stok_masuk_tanggal_datang(stok_masuk_id: int, tanggal_datang: str) -> Tu
             SET tanggal_datang = ? 
             WHERE stok_masuk_id = ? OR id = (SELECT pembayaran_semen_id FROM stok_masuk WHERE id = ?)
             """, (clean_dtg, stok_masuk_id, stok_masuk_id))
+
+            # 3. Jika sebelumnya belum datang, sekarang material resmi MASUK KE STOK
+            if not was_arrived:
+                if hrg_sat > 0:
+                    cursor.execute("""
+                    UPDATE material 
+                    SET stok_saat_ini = stok_saat_ini + ?, harga_beli_terbaru = ? 
+                    WHERE id = ?
+                    """, (qty, hrg_sat, mat_id))
+                    
+                    cursor.execute("""
+                    INSERT INTO material_harga_histori (material_id, tanggal, harga_beli, keterangan)
+                    VALUES (?, ?, ?, ?)
+                    """, (mat_id, clean_dtg, hrg_sat, f"Penerimaan Stok ({supp})"))
+                else:
+                    cursor.execute("UPDATE material SET stok_saat_ini = stok_saat_ini + ? WHERE id = ?", (qty, mat_id))
+
+                # Sync ke individual stok user
+                _sync_shared_stok_masuk_to_all_users(cursor, mat_id, qty, stok_masuk_id, clean_dtg)
             
             conn.commit()
-            return True, "Tanggal datang berhasil disimpan."
+            return True, "Tanggal datang berhasil disimpan dan stok material telah ditambahkan."
     except Exception as e:
         return False, str(e)
 
@@ -1823,13 +1869,13 @@ def get_riwayat_stok_masuk(material_id: Optional[int] = None, start_date: Option
         return [dict(row) for row in cursor.fetchall()]
 
 def get_rekap_kartu_stok() -> List[Dict[str, Any]]:
-    """Rekap pergerakan stok: total masuk, total terpakai pengiriman, stok saat ini & nilai aset stok"""
+    """Rekap pergerakan stok: total masuk (yang sudah datang), total terpakai pengiriman, stok saat ini & nilai aset stok"""
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("""
         SELECT 
             m.id, m.kode, m.nama, m.satuan, m.stok_saat_ini, m.stok_minimum, m.harga_beli_terbaru,
-            COALESCE((SELECT SUM(s.jumlah) FROM stok_masuk s WHERE s.material_id = m.id), 0) AS total_masuk,
+            COALESCE((SELECT SUM(s.jumlah) FROM stok_masuk s WHERE s.material_id = m.id AND s.tanggal_datang IS NOT NULL AND s.tanggal_datang != '' AND s.tanggal_datang != '-'), 0) AS total_masuk,
             COALESCE((SELECT SUM(d.jumlah_terpakai) FROM pengiriman_detail d WHERE d.material_id = m.id), 0) AS total_terpakai,
             (m.stok_saat_ini * m.harga_beli_terbaru) AS nilai_aset_stok
         FROM material m

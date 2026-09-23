@@ -1191,19 +1191,6 @@ class ProduksiView(QWidget):
                     ):
                         return
 
-                kap = float(kend.get("kapasitas_m3") or 0)
-                if kap > 0 and vol > kap:
-                    if not confirm_dialog(
-                        self,
-                        "Peringatan Kapasitas Overload",
-                        f"⚠️ PERINGATAN OVERLOAD KAPASITAS TRUK!\n\n"
-                        f"Volume cor yang diinput: {styles.format_number(vol, 2)} m³\n"
-                        f"Kapasitas drum mixer {k_nama}: {styles.format_number(kap, 1)} m³\n\n"
-                        f"Volume pengiriman melebihi kapasitas drum sebesar {styles.format_number(vol - kap, 2)} m³.\n\n"
-                        f"Apakah Anda yakin tetap ingin melanjutkan pengiriman ini?"
-                    ):
-                        return
-
         preview_items = database.preview_kebutuhan_material(mutu_id, vol, user_id=self.current_user_id)
         if not preview_items:
             QMessageBox.warning(self, "Peringatan", "Mutu beton ini belum memiliki komposisi resep material! Silakan atur di Master Data.")
@@ -1608,11 +1595,8 @@ class ProduksiView(QWidget):
                 for k in kendaraan_list:
                     np = k.get("no_plat") or ""
                     nm = k.get("nama_kendaraan") or ""
-                    kap = float(k.get("kapasitas_m3") or 0)
                     st = str(k.get("status") or "tersedia").lower()
                     label = f"{np} - {nm}" if nm else np
-                    if kap > 0:
-                        label += f" ({kap:g} m³)"
                     if st == "operasional":
                         label += "  [SEDANG DIGUNAKAN]"
                     elif st == "maintenance":
