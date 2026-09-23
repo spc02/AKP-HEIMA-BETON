@@ -35,13 +35,16 @@ def get_db_path() -> str:
         # Inisialisasi awal jika database belum ada di AppData client
         if not os.path.exists(target_path):
             exe_dir = os.path.dirname(sys.executable)
+            meipass = getattr(sys, '_MEIPASS', '')
             candidates = [
+                os.path.join(meipass, "akp_init.dat") if meipass else "",
+                os.path.join(meipass, DB_FILENAME) if meipass else "",
                 os.path.join(exe_dir, "_internal", "akp_init.dat"),
                 os.path.join(exe_dir, "akp_init.dat"),
                 os.path.join(exe_dir, DB_FILENAME),
             ]
             for c in candidates:
-                if os.path.exists(c):
+                if c and os.path.exists(c):
                     try:
                         import shutil
                         shutil.copy2(c, target_path)
