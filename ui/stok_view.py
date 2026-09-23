@@ -25,19 +25,13 @@ from export_service import fmt_tgl
 class KonfirmasiDatangDialog(ModernDialog):
     """Dialog untuk mencatat tanggal kedatangan aktual material ke pabrik"""
     def __init__(self, row_data: dict, parent=None):
-        super().__init__(parent)
+        super().__init__("Konfirmasi Material Sudah Datang", parent, min_width=440)
         self.row_data = row_data
-        self.setWindowTitle("Konfirmasi Kedatangan Material")
-        self.setFixedWidth(440)
         self.init_dialog()
 
     def init_dialog(self):
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(20, 20, 20, 20)
-        layout.setSpacing(14)
-
-        hdr = SectionHeader("📦 Konfirmasi Material Datang", "Catat tanggal kedatangan aktual material ke plant")
-        layout.addWidget(hdr)
+        hdr = SectionHeader("📦 Konfirmasi Kedatangan", "Catat tanggal kedatangan material agar otomatis masuk ke stok fisik")
+        self.content_layout.addWidget(hdr)
 
         # Info Box
         info_frame = QFrame()
@@ -69,7 +63,7 @@ class KonfirmasiDatangDialog(ModernDialog):
         info_lay.addWidget(QLabel("Tanggal Order:"), 2, 0)
         info_lay.addWidget(QLabel(f"<b>{tgl_order}</b>"), 2, 1)
 
-        layout.addWidget(info_frame)
+        self.content_layout.addWidget(info_frame)
 
         # Input Tanggal Datang
         input_box = QFrame()
@@ -100,26 +94,15 @@ class KonfirmasiDatangDialog(ModernDialog):
 
         self.dt_datang.setFixedHeight(34)
         input_lay.addWidget(self.dt_datang, 1)
-        layout.addWidget(input_box)
+        self.content_layout.addWidget(input_box)
 
         lbl_hint = QLabel("💡 Saat dikonfirmasi datang, kuantitas material otomatis MASUK KE STOK FISIK dan laporan keuangan diperbarui menjadi 'Sudah Datang'.")
         lbl_hint.setWordWrap(True)
         lbl_hint.setStyleSheet("font-size: 11px; color: #16A34A; font-weight: 600;")
-        layout.addWidget(lbl_hint)
+        self.content_layout.addWidget(lbl_hint)
 
-        btn_box = QHBoxLayout()
-        btn_box.setSpacing(8)
-        btn_box.addStretch()
-
-        btn_cancel = SecondaryButton("Batal")
-        btn_cancel.clicked.connect(self.reject)
-        btn_box.addWidget(btn_cancel)
-
-        btn_save = PrimaryButton("✓ Konfirmasi Sudah Datang & Masuk Stok")
-        btn_save.clicked.connect(self.save_tanggal_datang)
-        btn_box.addWidget(btn_save)
-
-        layout.addLayout(btn_box)
+        self.btn_save.setText("✓ Konfirmasi Sudah Datang & Masuk Stok")
+        self.btn_save.clicked.connect(self.save_tanggal_datang)
 
     def save_tanggal_datang(self):
         tgl_str = self.dt_datang.date().toString("yyyy-MM-dd")
