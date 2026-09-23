@@ -438,6 +438,52 @@ class AKPBetonTestSuite(unittest.TestCase):
         self.assertIn("ATK & Perlengkapan Kantor", items)
         self.assertIn("Konsumsi & Dapur", items)
 
+    def test_17_kiriman_proyek_dialog(self):
+        """Memverifikasi dialog daftar kiriman produksi per proyek di modul Keuangan"""
+        from ui.keuangan_view import KeuanganView, DetailKirimanProyekDialog
+        
+        # 1. Pastikan KeuanganView memuat rekapitulasi proyek
+        kv = KeuanganView()
+        kv.load_proyek_keuangan()
+        self.assertGreater(kv.table_rekap_proyek.rowCount(), 0)
+
+        # 2. Ambil proyek uji dan buat data pengiriman
+        proyeks = database.get_all_proyek()
+        p = proyeks[0]
+        mutus = database.get_all_mutu_beton()
+        m = mutus[0]
+
+        ok, msg, p_id = database.simpan_pengiriman(
+            tanggal="2026-09-23",
+            mutu_beton_id=m["id"],
+            volume_m3=4.0,
+            proyek_id=p["id"],
+            tujuan_pengiriman="Lokasi Cor Uji",
+            no_surat_jalan="SJ-UJI-001",
+            no_plat_truk="B 9999 AKP",
+            driver="Driver Uji",
+            catatan="Uji kiriman",
+            harga_jual_kustom=800000.0
+        )
+        self.assertTrue(ok)
+
+        # 3. Reload rekap dan uji buka dialog kiriman proyek
+        kv.load_proyek_keuangan()
+        rekap = database.get_rekap_saldo_per_proyek()
+        target = next(r for r in rekap if r["id"] == p["id"])
+        
+        dlg = DetailKirimanProyekDialog(target)
+        self.assertIsNotNone(dlg)
+
+        # Pastikan riwayat pengiriman untuk proyek ini terbaca
+        riwayat = database.get_riwayat_pengiriman(proyek_id=p["id"])
+        self.assertGreaterEqual(len(riwayat), 1)
+        self.assertEqual(riwayat[0]["no_surat_jalan"], "SJ-UJI-001")
+
+        # 4. Bersihkan data pengiriman uji
+        if p_id:
+            database.hapus_pengiriman(p_id)
+
 if __name__ == "__main__":
     unittest.main()
 

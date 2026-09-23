@@ -443,6 +443,232 @@ class DetailMaterialDODialog(ModernDialog):
 
 
 # ==============================================================================
+# 2B. DIALOG DAFTAR & RINCIAN KIRIMAN PRODUKSI PER PROYEK
+# ==============================================================================
+class DetailKirimanProyekDialog(ModernDialog):
+    """Dialog rincian lengkap kiriman produksi pada proyek tertentu beserta status penagihan/piutang"""
+    def __init__(self, proyek_data: dict, parent=None):
+        nama = proyek_data.get("nama") or f"Proyek #{proyek_data.get('id')}"
+        super().__init__(f"Daftar Kiriman Produksi: {nama}", parent, min_width=880)
+        self.proyek_data = proyek_data
+        self.parent_view = parent
+        self.init_details()
+
+    def init_details(self):
+        p = self.proyek_data
+        proyek_id = p.get("id")
+
+        # Ambil data kiriman produksi untuk proyek ini
+        kiriman_list = database.get_riwayat_pengiriman(proyek_id=proyek_id) if proyek_id else []
+
+        # 1. Header Card: Identitas Proyek, Total Volume, Total Tagihan, Sisa Piutang
+        sisa = float(p.get("sisa_saldo_piutang") or 0)
+        is_lunas = sisa <= 0
+        tipe_val = str(p.get("tipe_proyek") or "luar").lower()
+
+        top_card = QFrame()
+        top_card.setStyleSheet(f"""
+            QFrame {{
+                background-color: {styles.COLOR_BG_APP};
+                border: 1.5px solid {styles.COLOR_BORDER};
+                border-radius: 8px;
+            }}
+        """)
+        top_lay = QVBoxLayout(top_card)
+        top_lay.setContentsMargins(14, 12, 14, 12)
+        top_lay.setSpacing(8)
+
+        # Baris 1: Nama, Tipe badge, Status badge, Sisa Piutang
+        row1 = QHBoxLayout()
+        row1.addWidget(QLabel("<b>Nama Proyek:</b>"))
+        lbl_nama = QLabel(f"<b>{p.get('nama') or '-'}</b>")
+        lbl_nama.setStyleSheet(f"font-size: 13px; color: {styles.COLOR_PRIMARY_DARK};")
+        row1.addWidget(lbl_nama)
+        row1.addSpacing(10)
+
+        badge_tipe = BadgeLabel("🏭 Proyek Dalam" if tipe_val == "dalam" else "🏗️ Proyek Luar",
+                                "warning" if tipe_val == "dalam" else "primary")
+        row1.addWidget(badge_tipe)
+        row1.addSpacing(6)
+
+        badge_status = BadgeLabel("LUNAS" if is_lunas else "PIUTANG", "success" if is_lunas else "warning")
+        row1.addWidget(badge_status)
+        row1.addStretch()
+
+        sisa_color = "#059669" if is_lunas else "#DC2626"
+        lbl_sisa = QLabel(f"Sisa Piutang: <span style='color: {sisa_color}; font-size: 14px; font-weight: 800;'>{styles.format_rupiah(sisa)}</span>")
+        row1.addWidget(lbl_sisa)
+        top_lay.addLayout(row1)
+
+        # Baris 2: Lokasi, Total Volume, Total Tagihan, Total Bayar
+        row2 = QHBoxLayout()
+        row2.addWidget(QLabel(f"<b>Lokasi:</b> {p.get('lokasi') or '-'}"))
+        row2.addSpacing(16)
+        total_vol = p.get('total_volume_m3')
+        if total_vol is None:
+            total_vol = sum(float(k.get('volume_m3') or 0) for k in kiriman_list)
+        row2.addWidget(QLabel(f"<b>Total Volume Cor:</b> {styles.format_number(total_vol, 2)} m³"))
+        row2.addSpacing(16)
+        row2.addWidget(QLabel(f"<b>Total Tagihan:</b> {styles.format_rupiah(p.get('total_tagihan') or 0)}"))
+        row2.addSpacing(16)
+        row2.addWidget(QLabel(f"<b>Total Diterima:</b> {styles.format_rupiah(p.get('total_bayar') or 0)}"))
+        row2.addStretch()
+        top_lay.addLayout(row2)
+
+        self.content_layout.addWidget(top_card)
+        self.content_layout.addSpacing(6)
+
+        # 2. Section Title
+        lbl_table_title = QLabel(f"DAFTAR SURAT JALAN & KIRIMAN PRODUKSI ({len(kiriman_list)} PENGIRIMAN):")
+        lbl_table_title.setStyleSheet(f"font-weight: 700; color: {styles.COLOR_PRIMARY_DARK}; font-size: 11px;")
+        self.content_layout.addWidget(lbl_table_title)
+
+        # 3. Table of Kiriman
+        if kiriman_list:
+            tbl = ModernTableWidget([
+                "No", "No. Surat Jalan", "Tanggal", "Mutu Beton", "Volume (m³)",
+                "Armada Mixer", "Driver", "Tujuan / Segmen", "Total Tagihan (Rp)", "Aksi"
+            ])
+            tbl.setColumnWidth(0, 35)
+            tbl.setColumnWidth(1, 130)
+            tbl.setColumnWidth(2, 90)
+            tbl.setColumnWidth(3, 100)
+            tbl.setColumnWidth(4, 85)
+            tbl.setColumnWidth(5, 115)
+            tbl.setColumnWidth(6, 95)
+            tbl.setColumnWidth(7, 120)
+            tbl.setColumnWidth(8, 115)
+            tbl.setColumnWidth(9, 135)
+            tbl.setMinimumHeight(240)
+            tbl.setRowCount(len(kiriman_list))
+
+            for idx, k in enumerate(kiriman_list):
+                tbl.setItem(idx, 0, QTableWidgetItem(str(idx + 1)))
+
+                sj_item = QTableWidgetItem(str(k.get("no_surat_jalan") or f"SJ #{k.get('id')}"))
+                sj_item.setFont(QFont("Segoe UI", 9, QFont.Bold))
+                tbl.setItem(idx, 1, sj_item)
+
+                tbl.setItem(idx, 2, QTableWidgetItem(str(k.get("tanggal") or "-")))
+                tbl.setItem(idx, 3, QTableWidgetItem(str(k.get("mutu_kode") or "-")))
+
+                vol_item = QTableWidgetItem(f"{styles.format_number(k.get('volume_m3') or 0, 2)}")
+                vol_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+                tbl.setItem(idx, 4, vol_item)
+
+                armada_str = k.get("nama_kendaraan") or k.get("no_plat_truk") or "-"
+                tbl.setItem(idx, 5, QTableWidgetItem(str(armada_str)))
+                tbl.setItem(idx, 6, QTableWidgetItem(str(k.get("driver") or "-")))
+                tbl.setItem(idx, 7, QTableWidgetItem(str(k.get("tujuan_pengiriman") or "-")))
+
+                # Total Tagihan / Nilai Pengiriman
+                nilai = float(k.get("total_pendapatan") or 0)
+                if nilai <= 0:
+                    vol = float(k.get("volume_m3") or 0)
+                    hj = float(k.get("harga_jual_per_m3") or 0)
+                    nilai = vol * hj
+                tag_item = QTableWidgetItem(styles.format_rupiah(nilai))
+                tag_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+                tbl.setItem(idx, 8, tag_item)
+
+                # Tombol Aksi: Detail & Cetak SJ
+                act_w = QWidget()
+                act_lay = QHBoxLayout(act_w)
+                act_lay.setContentsMargins(2, 2, 2, 2)
+                act_lay.setSpacing(4)
+                act_lay.setAlignment(Qt.AlignCenter)
+
+                btn_det = TableDetailButton("Detail")
+                btn_det.setToolTip("Lihat rincian pemakaian material & snapshot keuangan")
+                btn_det.clicked.connect(lambda _, row_data=k: self.open_detail_pengiriman(row_data))
+                act_lay.addWidget(btn_det)
+
+                btn_pdf = SecondaryButton("📄 SJ")
+                btn_pdf.setFixedHeight(26)
+                btn_pdf.setCursor(Qt.PointingHandCursor)
+                btn_pdf.setToolTip("Buka / Cetak PDF Surat Jalan pengiriman ini")
+                btn_pdf.setStyleSheet("font-size: 10px; padding: 2px 6px; font-weight: bold;")
+                btn_pdf.clicked.connect(lambda _, row_data=k: self.cetak_sj_kiriman(row_data))
+                act_lay.addWidget(btn_pdf)
+
+                tbl.setCellWidget(idx, 9, act_w)
+
+            # Double click row to open detail
+            tbl.cellDoubleClicked.connect(lambda r, c: self.open_detail_pengiriman(kiriman_list[r]))
+            self.content_layout.addWidget(tbl)
+        else:
+            empty_box = QFrame()
+            empty_box.setStyleSheet(f"""
+                QFrame {{
+                    background-color: {styles.COLOR_SURFACE};
+                    border: 1px dashed {styles.COLOR_BORDER};
+                    border-radius: 8px;
+                    padding: 24px;
+                }}
+            """)
+            empty_lay = QVBoxLayout(empty_box)
+            lbl_empty = QLabel("ℹ️ Belum ada catatan kiriman produksi untuk proyek ini.")
+            lbl_empty.setAlignment(Qt.AlignCenter)
+            lbl_empty.setStyleSheet(f"color: {styles.COLOR_TEXT_MUTED}; font-size: 13px; font-weight: 600;")
+            lbl_sub = QLabel("Pengiriman dicatat melalui menu Produksi & Pengiriman (Pemberangkatan Truk Mixer).")
+            lbl_sub.setAlignment(Qt.AlignCenter)
+            lbl_sub.setStyleSheet(f"color: {styles.COLOR_TEXT_MUTED}; font-size: 11px;")
+            empty_lay.addWidget(lbl_empty)
+            empty_lay.addWidget(lbl_sub)
+            self.content_layout.addWidget(empty_box)
+
+        # 4. Footer Buttons
+        self.btn_save.setText("Tutup")
+        self.btn_save.clicked.connect(self.accept)
+        self.btn_cancel.setVisible(False)
+
+        if not is_lunas:
+            btn_bayar = SuccessButton("💳 Terima Pembayaran Piutang Proyek Ini")
+            btn_bayar.clicked.connect(self.on_bayar_clicked)
+            footer_lay = self.main_layout.itemAt(self.main_layout.count() - 1).layout()
+            if footer_lay:
+                footer_lay.insertWidget(0, btn_bayar)
+
+    def open_detail_pengiriman(self, pengiriman_data: dict):
+        try:
+            from ui.produksi_view import DetailPengirimanDialog
+            dlg = DetailPengirimanDialog(pengiriman_data, parent=self)
+            dlg.exec()
+        except Exception as e:
+            QMessageBox.warning(self, "Error", f"Gagal membuka detail pengiriman: {str(e)}")
+
+    def cetak_sj_kiriman(self, pengiriman_data: dict):
+        try:
+            import tempfile
+            import export_service
+            pid = pengiriman_data.get("id")
+            no_sj = str(pengiriman_data.get("no_surat_jalan") or f"SJ_{pid}").replace("/", "_")
+            base_name = f"Surat_Jalan_{no_sj}"
+            temp_dir = os.path.join(tempfile.gettempdir(), "akp_surat_jalan")
+            os.makedirs(temp_dir, exist_ok=True)
+            filepath = os.path.join(temp_dir, f"{base_name}.pdf")
+            try:
+                if os.path.exists(filepath):
+                    with open(filepath, "a"):
+                        pass
+            except (PermissionError, OSError):
+                filepath = os.path.join(temp_dir, f"{base_name}_{datetime.now().strftime('%H%M%S')}.pdf")
+
+            ok, result = export_service.cetak_surat_jalan_pdf(filepath, pid)
+            if ok:
+                export_service.open_pdf_document(filepath)
+            else:
+                QMessageBox.critical(self, "Gagal Cetak", f"❌ {result}")
+        except Exception as e:
+            QMessageBox.warning(self, "Error", f"Gagal mencetak Surat Jalan: {str(e)}")
+
+    def on_bayar_clicked(self):
+        self.accept()
+        if self.parent_view and hasattr(self.parent_view, "bayar_proyek_langsung"):
+            self.parent_view.bayar_proyek_langsung(self.proyek_data)
+
+
+# ==============================================================================
 # 3. DIALOG INPUT ORDER / DO SEMEN MANUAL
 # ==============================================================================
 class OrderSemenDialog(ModernDialog):
@@ -1714,7 +1940,8 @@ class KeuanganView(QWidget):
         self.table_rekap_proyek.setColumnWidth(6, 120)
         self.table_rekap_proyek.setColumnWidth(7, 120)
         self.table_rekap_proyek.setColumnWidth(8, 80)
-        self.table_rekap_proyek.setColumnWidth(9, 90)
+        self.table_rekap_proyek.setColumnWidth(9, 145)
+        self.table_rekap_proyek.setToolTip("Klik baris proyek untuk melihat rincian kiriman produksi")
         self.table_rekap_proyek.cellClicked.connect(self.on_proyek_rekap_cell_clicked)
         self.table_rekap_proyek.cellDoubleClicked.connect(self.on_proyek_rekap_cell_clicked)
         lay_rekap.addWidget(self.table_rekap_proyek)
@@ -1803,16 +2030,24 @@ class KeuanganView(QWidget):
                 badge.mousePressEvent = lambda event, row_data=r: self.bayar_proyek_langsung(row_data)
             self.table_rekap_proyek.setCellWidget(r_idx, 8, badge)
 
+            act_w = QWidget()
+            act_lay = QHBoxLayout(act_w)
+            act_lay.setContentsMargins(4, 2, 4, 2)
+            act_lay.setSpacing(6)
+            act_lay.setAlignment(Qt.AlignCenter)
+
+            btn_kiriman = TableDetailButton("Kiriman")
+            btn_kiriman.setToolTip("Lihat rincian daftar kiriman produksi untuk proyek ini")
+            btn_kiriman.clicked.connect(lambda _, row_data=r: self.show_kiriman_proyek(row_data))
+            act_lay.addWidget(btn_kiriman)
+
             if not is_lunas:
                 btn_bayar = TablePayButton("Bayar")
                 btn_bayar.setToolTip("Terima pembayaran piutang proyek ini sekarang")
                 btn_bayar.clicked.connect(lambda _, row_data=r: self.bayar_proyek_langsung(row_data))
-                self.table_rekap_proyek.setCellWidget(r_idx, 9, btn_bayar)
-            else:
-                lbl_lunas = QLabel("-")
-                lbl_lunas.setAlignment(Qt.AlignCenter)
-                lbl_lunas.setStyleSheet(f"color: {styles.COLOR_TEXT_MUTED}; font-size: 11px;")
-                self.table_rekap_proyek.setCellWidget(r_idx, 9, lbl_lunas)
+                act_lay.addWidget(btn_bayar)
+
+            self.table_rekap_proyek.setCellWidget(r_idx, 9, act_w)
 
         txs = database.get_proyek_pembayaran_list()
         self.table_detail_pembayaran.setRowCount(len(txs))
@@ -1840,12 +2075,19 @@ class KeuanganView(QWidget):
             self.data_changed.emit()
 
     def on_proyek_rekap_cell_clicked(self, row: int, col: int):
-        if col == 9:  # Kolom Aksi (sudah bergeser karena kolom Tipe ditambahkan)
+        # Abaikan jika mengklik kolom Aksi (9) karena tombol di dalamnya sudah menangani aksinya
+        if col == 9:
             return
         if hasattr(self, "_cached_proyek_rekap") and 0 <= row < len(self._cached_proyek_rekap):
             proyek = self._cached_proyek_rekap[row]
-            if proyek.get("sisa_saldo_piutang", 0) > 0:
-                self.bayar_proyek_langsung(proyek)
+            self.show_kiriman_proyek(proyek)
+
+    def show_kiriman_proyek(self, proyek_data: dict):
+        if not proyek_data:
+            return
+        dlg = DetailKirimanProyekDialog(proyek_data, parent=self)
+        dlg.exec()
+        self.load_proyek_keuangan()
 
     def bayar_proyek_langsung(self, proyek_data: dict):
         if not proyek_data:
